@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3Dモグラたたきゲーム</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #ui {
+      position: absolute;
+      top: 10px; left: 50%;
+      transform: translateX(-50%);
+      font-family: Arial, sans-serif;
+      z-index: 2; text-align: center;
+    }
+    #time, #score {
+      font-size: 24px; margin: 0 10px;
+      background: rgba(255,255,255,0.8); padding: 8px 12px; border-radius: 4px;
+    }
+    #gameover {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 20px 30px;
+      font-size: 24px;
+      border-radius: 12px;
+      text-align: center;
+      z-index: 3;
+      display: none;
+      width: 300px;
+    }
+    #restartBtn {
+      margin-top: 15px;
+      padding: 10px 20px;
+      font-size: 20px;
+      background: #ffffff;
+      color: #333;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    
+  </style>
+</head>
+<body>
+  <a-scene cursor="rayOrigin: mouse" vr-mode-ui="enabled: true">
+    <a-sky color="#88c0d0"></a-sky>
+    <a-light type="ambient" color="#ccc"></a-light>
+    <a-light type="directional" color="#fff" intensity="0.6" position="1 3 2"></a-light>
+    
+  　<a-entity id="stage" position="0 0 -5">
+       <!-- <a-plane position="0 0 0" rotation="-90 0 0" width="6" height="6" color="#3d9970"></a-plane> -->
+      <a-box position="0 -0.5 0" width="6" height="1" depth="6" color="#3d9970"></a-box>
+  
+      <a-cylinder id="hole0" position="-2 0.01 -2" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole1" position="0 0.01 -2" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole2" position="2 0.01 -2" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole3" position="-2 0.01 0" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole4" position="0 0.01 0" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole5" position="2 0.01 0" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole6" position="-2 0.01 2" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole7" position="0 0.01 2" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+      <a-cylinder id="hole8" position="2 0.01 2" radius="0.4" height="0.02" color="#4b382a"></a-cylinder>
+  　</a-entity>
+    
+    <a-camera position="0 3 8" look-controls></a-camera>
+
+    <a-entity id="hud" position="0 1.2 -8">
+      <a-entity id="time" text="value: Time Left: 60; color: white; align: center; width: 15" position="0 1.5 -2"></a-entity>
+      <a-entity id="score" text="value: Score: 0; color: white; align: center; width: 15" position="0 0.3 -2"></a-entity>
+    </a-entity>
+    <!-- GameOver Panel -->
+    <a-entity id="gameover" position="0 1.6 -6" visible="false">
+      <a-plane width="3.5" height="2.2" color="black" opacity="0.8" radius="0.1"></a-plane>
+      <a-entity id="finalScore" text="value: Final Score: 0; color: white; align: center; width: 6" position="0 0.2 0.01"></a-entity>
+      <a-plane id="restartBtn" width="1.5" height="0.4" color="white" position="0 -0.35 0.01" class="clickable">
+        <a-entity text="value: Play Again; color: black; align: center; width: 5" position="0 0 0.01"></a-entity>
+      </a-plane>
+    </a-entity>
+  </a-scene>
+
+<script>
+  let score = 0;
+  let timeLeft = 60;
+  let gameRunning = true;
+  const holes = Array.from({ length: 9 }, (_, i) => document.getElementById('hole' + i));
+  let lastUsedHoles = new Set();
+  // 現在出現中のモグラを穴のID
+  const activeMoles = new Map();
+
+  const timeText = document.getElementById('time');
+  const scoreText = document.getElementById('score');
+  const finalScoreText = document.getElementById('finalScore');
+  const gameoverPanel = document.getElementById('gameover');
+  const restartBtn = document.getElementById('restartBtn');
+  const scene = document.querySelector('a-scene');
+
+  function updateHUD() {
+    timeText.setAttribute('text', 'value', 'Time: ' + timeLeft + ' s');
+    scoreText.setAttribute('text', 'value', 'Score: ' + score + ' point');
+  }
+
+  function spawnMoles() {
+    if (!gameRunning) return;
+
+    const moleCount = Math.floor(Math.random() * 3) + 1;
+    // lastUsedHolesに加えて、activeMolesに存在しない穴のみを選択可能にする
+    const availableHoles = holes.filter(h => !lastUsedHoles.has(h.id) && !activeMoles.has(h.id));
+    const selectedHoles = [];
+
+    while (selectedHoles.length < moleCount && availableHoles.length > 0) {
+      const idx = Math.floor(Math.random() * availableHoles.length);
+      const chosenHole = availableHoles[idx];
+      selectedHoles.push(chosenHole);
+      lastUsedHoles.add(chosenHole.id);
+      availableHoles.splice(idx, 1); // 選択済み削除
+    }
+
+    // 前回と（同じ穴が連続しないようにする）
+    // 重複なし
+    lastUsedHoles.clear();
+    selectedHoles.forEach(hole => lastUsedHoles.add(hole.id));
+
+
+    selectedHoles.forEach(hole => {
+      // 既にこの穴にモグラがでた場合はスキップ
+      if (activeMoles.has(hole.id)) {
+        return;
+      }
+      
+
+      const pos = hole.getAttribute('position');
+      const isRare = Math.random() < 0.2;
+      const color = isRare ? 'yellow' : '#8b4513';
+      const pointValue = isRare ? 5 : 3;
+      const delay = Math.random() * 400;
+
+      const mole = document.createElement('a-cylinder');
+      mole.setAttribute('gltf-model', 'mogura.glb');
+      mole.setAttribute('scale', '0.3');
+      mole.setAttribute('radius', '0.1');
+      mole.setAttribute('height', '0.2');
+      mole.setAttribute('position', `${pos.x} -0.6 ${pos.z}`);
+      mole.setAttribute('color', color);
+      mole.setAttribute('class', 'clickable'); 
+
+      mole.setAttribute('animation', `
+        property: position;
+        to: ${pos.x} 0.6 ${pos.z};
+        dur: 1000;
+        dir: alternate;
+        loop: 1;
+        delay: ${delay};
+        easing: easeInOutQuad
+      `);
+
+      mole.dataset.clicked = 'false'; // クリック済み
+
+      // activeMoles にモグラを追加
+      activeMoles.set(hole.id, mole);
+
+      mole.addEventListener('click', () => {
+        // gameRunningがtrueで、クリックされていない場合のみ処理
+        if (!gameRunning || mole.dataset.clicked === 'true') return;
+
+        mole.dataset.clicked = 'true'; // クリック済み
+        score += pointValue;
+        updateHUD();
+        if (mole.parentNode) mole.parentNode.removeChild(mole);
+        // クリックされたら activeMoles から削除
+        activeMoles.delete(hole.id);
+      });
+
+      document.getElementById('stage').appendChild(mole);
+      setTimeout(() => {
+        // モグラがクリックされてない、 activeMoles に存在する場合のみ削除
+        if (mole.parentNode && mole.dataset.clicked === 'false' && activeMoles.has(hole.id)) {
+          mole.parentNode.removeChild(mole);
+          activeMoles.delete(hole.id); // 時間切れで消えた場合も
+        }
+      }, 3000 + delay);
+    });
+  }
+
+  function updateTimer() {
+      if (timeLeft > 0) {
+      timeLeft--;
+      updateHUD();
+      if (timeLeft === 0) {
+        endGame();
+      }
+    }
+  }
+
+  function endGame() {
+    finalScore.setAttribute('text', 'value', 'Final Score: ' + score);
+    gameover.setAttribute('visible', 'true');
+    // ゲーム終了時に全てのモグラを削除して、、activeMolesをクリア
+    activeMoles.forEach(mole => {
+      if (mole.parentNode) mole.parentNode.removeChild(mole);
+    });
+    activeMoles.clear();
+  }
+
+  restartBtn.addEventListener('click', () => {
+    score = 0;
+    timeLeft = 60;
+    gameRunning = true;
+    updateHUD();
+    gameover.setAttribute('visible', 'false');
+    spawnMoles();
+    startTimers();
+  });
+
+ function startTimers() {
+    const moleTimer = setInterval(() => {
+      if (gameRunning) spawnMoles();
+      else clearInterval(moleTimer);
+    }, 1200);
+
+    const countdownTimer = setInterval(() => {
+      if (gameRunning) updateTimer();
+      else clearInterval(countdownTimer);
+    }, 1000);
+  }
+
+  // Start
+  updateHUD();
+  spawnMoles();
+  startTimers();
+</script>
+
+</body>
+</html>
